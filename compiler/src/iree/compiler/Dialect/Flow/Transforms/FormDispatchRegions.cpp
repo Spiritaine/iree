@@ -196,10 +196,12 @@ static bool isRootOp(Operation *op) {
     }
     return !isa<linalg::FillOp>(op);
   }
-  // tensor::PadOp fusion is not ready. Explicitly marking it not a root op for
-  // now.
-  return (isa<TilingInterface>(op) && !isa<tensor::PadOp>(op)) ||
-         isa<LinalgExt::SetEncodingOp, LinalgExt::UnsetEncodingOp>(op);
+  if (isa<TilingInterface>(op)) {
+    // This is only needed because we need to fuse pad with its consumers as
+    // well.
+    return !isa<tensor::PadOp>(op);
+  }
+  return isa<LinalgExt::SetEncodingOp, LinalgExt::UnsetEncodingOp>(op);
 }
 
 /// Operations that are cloned into dispatch regions formed with other
@@ -209,8 +211,7 @@ bool isClonableIntoDispatchOp(Operation *op) {
   // trivially clonable too, but they cause problems
   // with bufferization. Make them clonable when fixed.
   if (isa<AffineApplyOp, arith::IndexCastOp, linalg::FillOp, tensor::EmptyOp,
-          tensor::CastOp, tensor::ExtractOp, tensor::ExtractSliceOp,
-          tensor::PadOp>(op)) {
+          tensor::CastOp, tensor::ExtractOp, tensor::ExtractSliceOp>(op)) {
     return true;
   }
   if (auto constantOp = dyn_cast<arith::ConstantOp>(op)) {
@@ -494,6 +495,12 @@ static bool isFusableWithConsumer(
                producerUnsetEncodingOp.getType().getRank();
   }
 
+  // Fuse a `generic` op producer with a `tensor.pad` consumer. This can be
+  // generalized to any op that implements the `TilingInterface`.
+  if (isa<linalg::GenericOp>(producer) && isa<tensor::PadOp>(consumer)) {
+    return true;
+  }
+
   auto producerLinalgOp = dyn_cast<linalg::LinalgOp>(producer);
   if (!producerLinalgOp || !consumerLinalgOp) return false;
 
@@ -571,6 +578,10 @@ static bool isFusableWithProducer(
     bool aggressiveFusion) {
   Operation *producer = operand.get().getDefiningOp();
   Operation *consumer = operand.getOwner();
+
+  if (isa<tensor::PadOp>(producer) && isa<linalg::LinalgOp>(consumer)) {
+    return true;
+  }
 
   auto linalgProducerOp = dyn_cast<linalg::LinalgOp>(producer);
   auto setEncodingOp = dyn_cast<IREE::LinalgExt::SetEncodingOp>(consumer);
@@ -675,13 +686,13 @@ static unsigned decideFusableLinalgOps(FunctionOpInterface funcOp,
     for (Operation &op : llvm::reverse(block)) {
       // If it is part of a fusion group or root op, ignore it.
       if (hasFusionGroupsAttribute(&op) || hasRootOpAttribute(&op)) continue;
-      // Only look for Linalg ops here. Avoid moving `linalg.fill`,
-      // `tensor.pack`, and `tensor.unpack` that aren't fused with anything else
-      // into their own dispatches since it is better to convert them to splats.
-      if (!isa<linalg::LinalgOp, tensor::PackOp, tensor::UnPackOp>(op) ||
-          isa<linalg::FillOp>(op)) {
+      // Only look for Linalg ops here. Avoid moving `linalg.fill` that aren't
+      // fused with anything else into their own dispatches since it is better
+      // to convert them to splats.
+      if (!isa<linalg::LinalgOp, tensor::PackOp, tensor::UnPackOp,
+               tensor::PadOp>(op) ||
+          isa<linalg::FillOp>(op))
         continue;
-      }
 
       unsigned newGroup = numRootOps++;
       setRootAttribute(context, &op, newGroup);

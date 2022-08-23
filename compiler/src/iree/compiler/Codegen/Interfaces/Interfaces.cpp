@@ -24,6 +24,7 @@
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/MemRef/TransformOps/MemRefTransformOps.h"
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
+#include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
 #include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
 
 namespace mlir {
@@ -43,7 +44,6 @@ void registerCodegenInterfaces(DialectRegistry &registry) {
   registerTransformDialectLLVMCPUExtension(registry);
   registerTransformDialectLLVMGPUExtension(registry);
   linalg::registerTilingInterfaceExternalModels(registry);
-
   affine::registerTransformDialectExtension(registry);
   bufferization::registerTransformDialectExtension(registry);
   gpu::registerTransformDialectExtension(registry);
@@ -51,6 +51,7 @@ void registerCodegenInterfaces(DialectRegistry &registry) {
   memref::registerTransformDialectExtension(registry);
   scf::registerTransformDialectExtension(registry);
   vector::registerTransformDialectExtension(registry);
+  tensor::registerTilingInterfaceExternalModels(registry);
 }
 
 }  // namespace iree_compiler
