@@ -158,7 +158,7 @@ LogicalResult eliminateEmptyTensors(
   OneShotBufferizationOptions updatedOptions = options;
   updatedOptions.allowReturnAllocs = true;
   OneShotAnalysisState state(op, updatedOptions);
-  if (failed(analyzeOp(op, state))) return success();
+  if (failed(analyzeOp(op, state))) return failure();
 
   // Rewrite tensor.empty ops that are anchored on specific ops.
   IRRewriter rewriter(op->getContext());
